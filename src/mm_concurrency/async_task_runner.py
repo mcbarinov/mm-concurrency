@@ -2,15 +2,15 @@
 
 import asyncio
 import contextlib
-from collections.abc import Callable, Coroutine
+import logging
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import Any
 
-type AsyncFunc = Callable[..., Coroutine[Any, Any, object]]
-type Args = tuple[object, ...]
-type Kwargs = dict[str, object]
 type TaskKey = str
-type TaskResult = object
+type TaskResult = Any
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncTaskRunner:
@@ -19,86 +19,143 @@ class AsyncTaskRunner:
     Manages asyncio tasks to run coroutines concurrently with configurable
     concurrency limit, tracking results and exceptions for each task by its unique key.
 
-    Example:
-        runner = AsyncTaskRunner(max_concurrent_tasks=3)
-        runner.add("task1", fetch_data_async, ("url1",))
-        runner.add("task2", process_file_async, ("file.txt",))
-        await runner.run()
+    Note: This runner is designed for one-time use. Create a new instance for each batch of tasks.
 
-        if runner.has_errors:
-            print(f"Failed: {runner.exceptions}")
-        print(f"Results: {runner.results}")
+    Example:
+        runner = AsyncTaskRunner(max_concurrent_tasks=3, timeout=10.5, name="data_fetcher")
+        runner.add("task1", fetch_data_async("url1"))
+        runner.add("task2", process_file_async("file.txt"))
+        result = await runner.run()
+
+        if not result.is_ok:
+            print(f"Failed: {result.exceptions}")
+        print(f"Results: {result.results}")
     """
 
-    def __init__(self, max_concurrent_tasks: int = 5, timeout: float | None = None) -> None:
+    @dataclass
+    class Result:
+        results: dict[TaskKey, TaskResult]  # Maps task_key to result
+        exceptions: dict[TaskKey, Exception]  # Maps task_key to exception (if any)
+        is_ok: bool  # True if no exception and no timeout occurred
+        is_timeout: bool  # True if at least one task was cancelled due to timeout
+
+    def __init__(
+        self,
+        max_concurrent_tasks: int = 5,
+        timeout: float | None = None,
+        name: str | None = None,
+        suppress_logging: bool = False,
+    ) -> None:
+        """Initialize AsyncTaskRunner.
+
+        Args:
+            max_concurrent_tasks: Maximum number of tasks that can run concurrently
+            timeout: Optional overall timeout in seconds for running all tasks
+            name: Optional name for the runner (useful for debugging)
+            suppress_logging: If True, suppresses logging for task exceptions
+
+        Raises:
+            ValueError: If timeout is not positive
+        """
+        if timeout is not None and timeout <= 0:
+            raise ValueError("Timeout must be positive if specified")
+
         self.max_concurrent_tasks = max_concurrent_tasks
         self.timeout = timeout
+        self.name = name
+        self.suppress_logging = suppress_logging
         self.tasks: list[AsyncTaskRunner.Task] = []
-        self.exceptions: dict[TaskKey, Exception] = {}  # Exceptions for failed tasks by key
-        self.has_errors = False  # True if any task failed or timed out
-        self.has_timeout = False  # True if execution timed out
-        self.results: dict[TaskKey, TaskResult] = {}  # Results for successful tasks by key
+        self._task_keys: set[TaskKey] = set()
+        self._was_run = False
 
     @dataclass
     class Task:
         key: TaskKey
-        func: AsyncFunc
-        args: Args
-        kwargs: Kwargs
+        awaitable: Awaitable[Any]
 
-    def add(self, key: TaskKey, func: AsyncFunc, args: Args = (), kwargs: Kwargs | None = None) -> None:
+    def add(self, key: TaskKey, awaitable: Awaitable[Any]) -> None:
         """Add an async task to be executed.
 
         Args:
             key: Unique identifier for this task
-            func: Async function to execute
-            args: Positional arguments for the function
-            kwargs: Keyword arguments for the function
-        """
-        if kwargs is None:
-            kwargs = {}
-        self.tasks.append(AsyncTaskRunner.Task(key, func, args, kwargs))
+            awaitable: Awaitable object (coroutine) to execute
 
-    async def run(self) -> None:
+        Raises:
+            RuntimeError: If the runner has already been used
+            ValueError: If key is empty or already exists
+        """
+        if self._was_run:
+            raise RuntimeError("This AsyncTaskRunner has already been used. Create a new instance for new tasks.")
+
+        if not key or not key.strip():
+            raise ValueError("Task key cannot be empty")
+
+        if key in self._task_keys:
+            raise ValueError(f"Task key '{key}' already exists")
+
+        self._task_keys.add(key)
+        self.tasks.append(AsyncTaskRunner.Task(key, awaitable))
+
+    async def run(self) -> "AsyncTaskRunner.Result":
         """Execute all added async tasks concurrently.
 
-        Results are stored in self.results and exceptions in self.exceptions.
-        Check self.has_errors and self.has_timeout for execution status.
+        Returns AsyncTaskRunner.Result containing task results, exceptions,
+        and flags indicating overall status.
+
+        Raises:
+            RuntimeError: If the runner has already been used
+            ValueError: If no tasks have been added
         """
+        if self._was_run:
+            raise RuntimeError("This AsyncTaskRunner instance can only be run once. Create a new instance for new tasks.")
+
+        self._was_run = True
+
         if not self.tasks:
-            return
+            raise ValueError("No tasks to run. Add tasks using add() method before calling run()")
 
         # Create semaphore to limit concurrent tasks
         semaphore = asyncio.Semaphore(self.max_concurrent_tasks)
+        results: dict[TaskKey, TaskResult] = {}
+        exceptions: dict[TaskKey, Exception] = {}
+        is_timeout = False
 
         async def _run_task_with_semaphore(task: AsyncTaskRunner.Task) -> None:
             """Run a single task with semaphore protection."""
             async with semaphore:
                 try:
-                    result = await task.func(*task.args, **task.kwargs)
-                    self.results[task.key] = result
+                    result = await task.awaitable
+                    results[task.key] = result
                 except Exception as err:
-                    self.has_errors = True
-                    self.exceptions[task.key] = err
+                    if not self.suppress_logging:
+                        logger.exception("Task raised an exception", extra={"task_key": task.key})
+                    exceptions[task.key] = err
+
+        def _task_name(task_key: TaskKey) -> str:
+            return f"{self.name}-{task_key}" if self.name else task_key
+
+        # Create asyncio tasks for all runner tasks
+        tasks = [asyncio.create_task(_run_task_with_semaphore(task), name=_task_name(task.key)) for task in self.tasks]
 
         try:
-            # Create tasks with semaphore protection
-            async_tasks: dict[asyncio.Task[None], TaskKey] = {
-                asyncio.create_task(_run_task_with_semaphore(task), name=task.key): task.key for task in self.tasks
-            }
-
-            # Use asyncio.wait to handle individual task failures
-            done, pending = await asyncio.wait(async_tasks.keys(), timeout=self.timeout, return_when=asyncio.ALL_COMPLETED)
-
-            # Handle timeout - cancel pending tasks
-            if pending:
-                self.has_errors = True
-                self.has_timeout = True
-                for task in pending:
-                    task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await task
-
+            if self.timeout is not None:
+                # Run with timeout
+                await asyncio.wait_for(asyncio.gather(*tasks), timeout=self.timeout)
+            else:
+                # Run without timeout
+                await asyncio.gather(*tasks)
         except TimeoutError:
-            self.has_errors = True
-            self.has_timeout = True
+            # Cancel all running tasks on timeout
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+            # Wait for cancellation to complete, but don't wait indefinitely
+            # Use a short timeout to avoid hanging if tasks don't respond to cancellation
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=1.0)
+
+            is_timeout = True
+
+        is_ok = not exceptions and not is_timeout
+        return AsyncTaskRunner.Result(results=results, exceptions=exceptions, is_ok=is_ok, is_timeout=is_timeout)

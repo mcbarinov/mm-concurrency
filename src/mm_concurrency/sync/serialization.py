@@ -119,7 +119,6 @@ def serialized_by_arg[T, **P](
                         locks.pop(lock_key, None)
                         usage_count.pop(lock_key, None)
 
-        wrapper.locks = locks  # type: ignore[attr-defined]
         return wrapper
 
     return decorator
@@ -155,5 +154,4 @@ def serialized[T, **P](func: Callable[P, T]) -> Callable[P, T]:
         with lock:
             return func(*args, **kwargs)
 
-    wrapper.lock = lock  # type: ignore[attr-defined]
     return wrapper

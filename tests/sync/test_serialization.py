@@ -151,22 +151,6 @@ class TestSerialized:
         result = failing_function()
         assert result == "success"
 
-    def test_lock_attribute_access(self) -> None:
-        """Test that the lock attribute is accessible for inspection."""
-
-        @serialized
-        def some_function() -> None:
-            pass
-
-        # Should have lock attribute
-        assert hasattr(some_function, "lock")
-        assert some_function.lock is not None
-
-        # Lock should be usable
-        acquired = some_function.lock.acquire(blocking=False)
-        assert acquired
-        some_function.lock.release()
-
     def test_return_values(self) -> None:
         """Test that function return values work correctly."""
 
@@ -318,40 +302,6 @@ class TestSerializedByArg:
         assert "processed_shared_key" in results
         assert None in results
 
-    def test_memory_cleanup(self) -> None:
-        """Test that locks are cleaned up after use to prevent memory leaks."""
-
-        @serialized_by_arg()
-        def process(_key: str) -> None:
-            pass
-
-        # Process different keys
-        for i in range(100):
-            process(f"key_{i}")
-
-        # All locks should be cleaned up since no concurrent usage
-        assert len(process.locks) == 0  # type: ignore[attr-defined]
-
-    def test_concurrent_cleanup(self) -> None:
-        """Test that cleanup works correctly with concurrent access."""
-
-        @serialized_by_arg()
-        def process(_key: str) -> None:
-            time.sleep(0.01)
-
-        # Start many concurrent threads with different keys
-        threads = []
-        for i in range(50):
-            thread = threading.Thread(target=process, args=(f"key_{i}",))
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()
-
-        # All locks should be cleaned up
-        assert len(process.locks) == 0  # type: ignore[attr-defined]
-
     def test_error_cases(self) -> None:
         """Test various error conditions."""
         # Invalid parameter name
@@ -386,9 +336,6 @@ class TestSerializedByArg:
 
         # Second call should succeed (lock was released)
         failing_function("test_key")  # Should not hang
-
-        # Lock should be cleaned up
-        assert len(failing_function.locks) == 0  # type: ignore[attr-defined]
 
     def test_mixed_argument_styles(self) -> None:
         """Test function works with both positional and keyword arguments."""

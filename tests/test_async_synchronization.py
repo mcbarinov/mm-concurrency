@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from mm_concurrency import async_synchronized, async_synchronized_by_arg
+from mm_concurrency import async_synchronized, async_synchronized_by_arg_value
 
 
 class TestAsyncSynchronized:
@@ -216,14 +216,14 @@ class TestAsyncSynchronized:
         assert tuple(call_order) in expected_orders
 
 
-class TestAsyncSynchronizedByArg:
-    """Tests for the async_synchronized_by_arg decorator."""
+class TestAsyncSynchronizedByArgValue:
+    """Tests for the async_synchronized_by_arg_value decorator."""
 
     async def test_different_keys_execute_concurrently(self) -> None:
         """Test that different argument values allow concurrent execution."""
         call_order: list[str] = []
 
-        @async_synchronized_by_arg(index=0)
+        @async_synchronized_by_arg_value(index=0)
         async def process_user(user_id: str) -> str:
             call_order.append(f"start_{user_id}")
             await asyncio.sleep(0.1)  # Simulate async work
@@ -264,7 +264,7 @@ class TestAsyncSynchronizedByArg:
         """Test that same argument values are synchronized."""
         call_order: list[str] = []
 
-        @async_synchronized_by_arg(index=0)
+        @async_synchronized_by_arg_value(index=0)
         async def process_user(user_id: str, operation: str) -> str:
             call_order.append(f"start_{user_id}_{operation}")
             await asyncio.sleep(0.1)  # Simulate async work
@@ -293,7 +293,7 @@ class TestAsyncSynchronizedByArg:
         """Test synchronization using keyword parameter name."""
         call_order: list[str] = []
 
-        @async_synchronized_by_arg(key="resource_id")
+        @async_synchronized_by_arg_value(key="resource_id")
         async def process_resource(data: dict, resource_id: str) -> str:
             call_order.append(f"start_{resource_id}_{data['value']}")
             await asyncio.sleep(0.05)
@@ -320,7 +320,7 @@ class TestAsyncSynchronizedByArg:
         barrier = asyncio.Event()
         results: list[str | None] = []
 
-        @async_synchronized_by_arg(index=0, nonblocking=True)
+        @async_synchronized_by_arg_value(index=0, nonblocking=True)
         async def slow_operation(key: str) -> str:
             await barrier.wait()  # Wait for signal
             return f"result_{key}"
@@ -361,7 +361,7 @@ class TestAsyncSynchronizedByArg:
     async def test_nonblocking_different_keys_both_succeed(self) -> None:
         """Test that nonblocking mode allows different keys to proceed."""
 
-        @async_synchronized_by_arg(index=0, nonblocking=True)
+        @async_synchronized_by_arg_value(index=0, nonblocking=True)
         async def process_item(item_id: str) -> str:
             await asyncio.sleep(0.01)
             return f"processed_{item_id}"
@@ -380,7 +380,7 @@ class TestAsyncSynchronizedByArg:
         """Test that exceptions don't prevent proper cleanup."""
         call_count = 0
 
-        @async_synchronized_by_arg(index=0)
+        @async_synchronized_by_arg_value(index=0)
         async def failing_function(key: str) -> str:
             nonlocal call_count
             call_count += 1
@@ -400,14 +400,14 @@ class TestAsyncSynchronizedByArg:
         """Test that specifying non-existent parameter name raises ValueError."""
         with pytest.raises(ValueError, match="Parameter 'nonexistent' not found"):
 
-            @async_synchronized_by_arg(key="nonexistent")
+            @async_synchronized_by_arg_value(key="nonexistent")
             async def test_func(valid_param: str) -> str:
                 return valid_param
 
     async def test_argument_index_out_of_range_raises_error(self) -> None:
         """Test that invalid argument index raises IndexError."""
 
-        @async_synchronized_by_arg(index=2)  # Only 1 argument available
+        @async_synchronized_by_arg_value(index=2)  # Only 1 argument available
         async def test_func(param: str) -> str:
             return param
 
@@ -418,7 +418,7 @@ class TestAsyncSynchronizedByArg:
         """Test that locks are cleaned up when no longer in use."""
 
         # Create a simple operation that we can monitor
-        @async_synchronized_by_arg(index=0)
+        @async_synchronized_by_arg_value(index=0)
         async def short_operation(key: str) -> str:
             return f"result_{key}"
 

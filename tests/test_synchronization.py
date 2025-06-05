@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from mm_concurrency import synchronized, synchronized_by_arg
+from mm_concurrency import synchronized, synchronized_by_arg_value
 
 
 class TestSynchronized:
@@ -53,7 +53,7 @@ class TestSynchronized:
             assert task_from_start == task_from_end
 
     def test_different_arguments_still_synchronized(self) -> None:
-        """Test that even different arguments are synchronized (unlike synchronized_by_arg)."""
+        """Test that even different arguments are synchronized (unlike synchronized_by_arg_value)."""
         execution_times: list[tuple[str, float, float]] = []
 
         @synchronized
@@ -181,14 +181,14 @@ class TestSynchronized:
         assert 17 in results  # 10 + 7
 
 
-class TestSerializedByArg:
-    """Tests for the synchronized_by_arg decorator."""
+class TestSynchronizedByArgValue:
+    """Tests for the synchronized_by_arg_value decorator."""
 
     def test_basic_locking_by_index(self) -> None:
         """Test that function calls with same argument value are synchronized."""
         call_order: list[str] = []
 
-        @synchronized_by_arg(index=0)
+        @synchronized_by_arg_value(index=0)
         def slow_process(key: str) -> str:
             call_order.append(f"start_{key}")
             time.sleep(0.1)  # Simulate work
@@ -222,7 +222,7 @@ class TestSerializedByArg:
         start_times: dict[str, float] = {}
         end_times: dict[str, float] = {}
 
-        @synchronized_by_arg(index=0)
+        @synchronized_by_arg_value(index=0)
         def slow_process(key: str) -> None:
             start_times[key] = time.time()
             time.sleep(0.1)
@@ -246,7 +246,7 @@ class TestSerializedByArg:
         """Test locking by parameter name instead of index."""
         results: list[str] = []
 
-        @synchronized_by_arg(key="user_id")
+        @synchronized_by_arg_value(key="user_id")
         def process_user(user_id: str, _data: dict[str, Any]) -> None:
             results.append(f"processing_{user_id}")
             time.sleep(0.05)
@@ -274,7 +274,7 @@ class TestSerializedByArg:
         """Test nonblocking mode returns None when lock is held."""
         results: list[str | None] = []
 
-        @synchronized_by_arg(nonblocking=True)
+        @synchronized_by_arg_value(nonblocking=True)
         def try_process(key: str) -> str:
             time.sleep(0.1)
             return f"processed_{key}"
@@ -307,12 +307,12 @@ class TestSerializedByArg:
         # Invalid parameter name
         with pytest.raises(ValueError, match="Parameter 'nonexistent' not found"):
 
-            @synchronized_by_arg(key="nonexistent")
+            @synchronized_by_arg_value(key="nonexistent")
             def func(param: str) -> None:
                 pass
 
         # Index out of range
-        @synchronized_by_arg(index=2)  # Looking for 3rd argument (index 2)
+        @synchronized_by_arg_value(index=2)  # Looking for 3rd argument (index 2)
         def needs_two_args(first: str, second: str) -> None:
             pass
 
@@ -323,7 +323,7 @@ class TestSerializedByArg:
         """Test that locks are properly released even when function raises."""
         call_count = 0
 
-        @synchronized_by_arg()
+        @synchronized_by_arg_value()
         def failing_function(_key: str) -> None:
             nonlocal call_count
             call_count += 1
@@ -340,7 +340,7 @@ class TestSerializedByArg:
     def test_mixed_argument_styles(self) -> None:
         """Test function works with both positional and keyword arguments."""
 
-        @synchronized_by_arg(key="user_id")
+        @synchronized_by_arg_value(key="user_id")
         def update_user(user_id: str, name: str, age: int) -> str:
             return f"{user_id}_{name}_{age}"
 
@@ -354,14 +354,14 @@ class TestSerializedByArg:
         assert result3 == "789_Charlie_35"
 
     def test_class_methods(self) -> None:
-        """Test that synchronized_by_arg works correctly on class methods."""
+        """Test that synchronized_by_arg_value works correctly on class methods."""
         call_order: list[str] = []
 
         class UserProcessor:
             def __init__(self, name: str) -> None:
                 self.name = name
 
-            @synchronized_by_arg(key="user_id")
+            @synchronized_by_arg_value(key="user_id")
             def process_user(self, user_id: str, action: str) -> str:
                 call_order.append(f"{self.name}_start_{user_id}_{action}")
                 time.sleep(0.05)

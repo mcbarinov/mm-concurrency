@@ -2,7 +2,7 @@
 
 Provides decorators:
 - async_synchronized: All calls to the async function are synchronized
-- async_synchronized_by_arg: Calls are synchronized only for matching argument values
+- async_synchronized_by_arg_value: Calls are synchronized only for matching argument values
 """
 
 import asyncio
@@ -46,7 +46,7 @@ def async_synchronized[T, **P](func: Callable[P, Awaitable[T]]) -> Callable[P, A
     return wrapper
 
 
-def async_synchronized_by_arg[T, **P](
+def async_synchronized_by_arg_value[T, **P](
     index: int = 0, key: str | None = None, nonblocking: bool = False
 ) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T | None]]]:
     """Decorator that synchronizes async function calls based on argument values.
@@ -67,18 +67,18 @@ def async_synchronized_by_arg[T, **P](
         ValueError: If key is specified but not found in function signature
 
     Example:
-        @async_synchronized_by_arg(index=0)
+        @async_synchronized_by_arg_value(index=0)
         async def process_user(user_id: str) -> None:
             # Only one coroutine can process the same user_id at a time
             # But different user_ids can be processed concurrently
             pass
 
-        @async_synchronized_by_arg(key='user_id')
+        @async_synchronized_by_arg_value(key='user_id')
         async def process_user(user_id: str, data: dict) -> None:
             # More readable - synchronizes by user_id parameter
             pass
 
-        @async_synchronized_by_arg(nonblocking=True)
+        @async_synchronized_by_arg_value(nonblocking=True)
         async def try_update_cache(cache_key: str) -> bool:
             # Returns None if another coroutine is already updating this key
             pass

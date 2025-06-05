@@ -2,7 +2,7 @@
 
 Provides two decorators:
 - synchronized: All calls to the function are synchronized
-- synchronized_by_arg: Calls are synchronized only for matching argument values
+- synchronized_by_arg_value: Calls are synchronized only for matching argument values
 """
 
 import functools
@@ -12,7 +12,7 @@ from collections.abc import Callable
 from threading import Lock, RLock
 
 
-def synchronized_by_arg[T, **P](
+def synchronized_by_arg_value[T, **P](
     index: int = 0, key: str | None = None, nonblocking: bool = False
 ) -> Callable[[Callable[P, T]], Callable[P, T | None]]:
     """Decorator that synchronizes function calls based on argument values.
@@ -33,18 +33,18 @@ def synchronized_by_arg[T, **P](
         ValueError: If key is specified but not found in function signature
 
     Example:
-        @synchronized_by_arg(index=0)
+        @synchronized_by_arg_value(index=0)
         def process_user(user_id: str) -> None:
             # Only one thread can process the same user_id at a time
             # But different user_ids can be processed concurrently
             pass
 
-        @synchronized_by_arg(key='user_id')
+        @synchronized_by_arg_value(key='user_id')
         def process_user(user_id: str, data: dict) -> None:
             # More readable - synchronizes by user_id parameter
             pass
 
-        @synchronized_by_arg(nonblocking=True)
+        @synchronized_by_arg_value(nonblocking=True)
         def try_update_cache(cache_key: str) -> bool:
             # Returns None if another thread is already updating this key
             pass

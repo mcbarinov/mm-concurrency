@@ -1,11 +1,11 @@
 """Concurrent async task execution with result collection and error handling."""
 
-import asyncio
-import contextlib
 import logging
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import Any
+
+import anyio
 
 type TaskKey = str
 type TaskResult = Any
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class AsyncTaskRunner:
     """Execute multiple async tasks concurrently and collect results by key.
 
-    Manages asyncio tasks to run coroutines concurrently with configurable
+    Manages anyio task groups to run coroutines concurrently with configurable
     concurrency limit, tracking results and exceptions for each task by its unique key.
 
     Note: This runner is designed for one-time use. Create a new instance for each batch of tasks.
@@ -114,15 +114,13 @@ class AsyncTaskRunner:
         if not self.tasks:
             raise ValueError("No tasks to run. Add tasks using add() method before calling run()")
 
-        # Create semaphore to limit concurrent tasks
-        semaphore = asyncio.Semaphore(self.max_concurrent_tasks)
         results: dict[TaskKey, TaskResult] = {}
         exceptions: dict[TaskKey, Exception] = {}
         is_timeout = False
 
-        async def _run_task_with_semaphore(task: AsyncTaskRunner.Task) -> None:
-            """Run a single task with semaphore protection."""
-            async with semaphore:
+        async def _run_task_with_limiter(task: AsyncTaskRunner.Task, limiter: anyio.CapacityLimiter) -> None:
+            """Run a single task with capacity limiter protection."""
+            async with limiter:
                 try:
                     result = await task.awaitable
                     results[task.key] = result
@@ -134,27 +132,27 @@ class AsyncTaskRunner:
         def _task_name(task_key: TaskKey) -> str:
             return f"{self.name}-{task_key}" if self.name else task_key
 
-        # Create asyncio tasks for all runner tasks
-        tasks = [asyncio.create_task(_run_task_with_semaphore(task), name=_task_name(task.key)) for task in self.tasks]
-
         try:
+            # Use anyio's fail_after for timeout support if specified
             if self.timeout is not None:
-                # Run with timeout
-                await asyncio.wait_for(asyncio.gather(*tasks), timeout=self.timeout)
+                with anyio.fail_after(self.timeout):
+                    # TaskGroup automatically handles task lifecycle and cancellation
+                    async with anyio.create_task_group() as tg:
+                        limiter = anyio.CapacityLimiter(self.max_concurrent_tasks)
+
+                        for task in self.tasks:
+                            tg.start_soon(_run_task_with_limiter, task, limiter)
             else:
-                # Run without timeout
-                await asyncio.gather(*tasks)
+                # TaskGroup automatically handles task lifecycle and cancellation
+                async with anyio.create_task_group() as tg:
+                    limiter = anyio.CapacityLimiter(self.max_concurrent_tasks)
+
+                    for task in self.tasks:
+                        tg.start_soon(_run_task_with_limiter, task, limiter)
+
         except TimeoutError:
-            # Cancel all running tasks on timeout
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-
-            # Wait for cancellation to complete, but don't wait indefinitely
-            # Use a short timeout to avoid hanging if tasks don't respond to cancellation
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=1.0)
-
+            is_timeout = True
+        except anyio.get_cancelled_exc_class():
             is_timeout = True
 
         is_ok = not exceptions and not is_timeout

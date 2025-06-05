@@ -4,17 +4,17 @@ from typing import Any
 
 import pytest
 
-from mm_concurrency import serialized, serialized_by_arg
+from mm_concurrency import synchronized, synchronized_by_arg
 
 
-class TestSerialized:
-    """Tests for the serialized decorator."""
+class TestSynchronized:
+    """Tests for the synchronized decorator."""
 
     def test_basic_serialization(self) -> None:
-        """Test that all function calls are fully serialized."""
+        """Test that all function calls are fully synchronized."""
         call_order: list[str] = []
 
-        @serialized
+        @synchronized
         def process_task(task_name: str) -> str:
             call_order.append(f"start_{task_name}")
             time.sleep(0.1)  # Simulate work
@@ -38,7 +38,7 @@ class TestSerialized:
         for thread in threads:
             thread.join()
 
-        # All calls should be fully serialized - complete task before starting next
+        # All calls should be fully synchronized - complete task before starting next
         assert len(call_order) == 6
 
         # Check that each task completes before the next starts
@@ -52,11 +52,11 @@ class TestSerialized:
             task_from_end = end_call.split("_", 1)[1]
             assert task_from_start == task_from_end
 
-    def test_different_arguments_still_serialized(self) -> None:
-        """Test that even different arguments are serialized (unlike serialized_by_arg)."""
+    def test_different_arguments_still_synchronized(self) -> None:
+        """Test that even different arguments are synchronized (unlike synchronized_by_arg)."""
         execution_times: list[tuple[str, float, float]] = []
 
-        @serialized
+        @synchronized
         def process_data(data_id: str, _value: int) -> None:
             start_time = time.time()
             time.sleep(0.05)
@@ -75,7 +75,7 @@ class TestSerialized:
         for thread in threads:
             thread.join()
 
-        # Verify that executions don't overlap (serialized)
+        # Verify that executions don't overlap (synchronized)
         assert len(execution_times) == 3
         execution_times.sort(key=lambda x: x[1])  # Sort by start time
 
@@ -86,7 +86,7 @@ class TestSerialized:
             assert next_start >= current_end - 0.01
 
     def test_class_methods(self) -> None:
-        """Test that serialized works correctly on class methods."""
+        """Test that synchronized works correctly on class methods."""
         call_order: list[str] = []
 
         class Counter:
@@ -94,7 +94,7 @@ class TestSerialized:
                 self.name = name
                 self.value = 0
 
-            @serialized
+            @synchronized
             def increment(self, by: int = 1) -> int:
                 call_order.append(f"{self.name}_start")
                 time.sleep(0.05)
@@ -106,7 +106,7 @@ class TestSerialized:
         counter1 = Counter("C1")
         counter2 = Counter("C2")
 
-        # All method calls should be serialized across instances
+        # All method calls should be synchronized across instances
         def worker1() -> None:
             counter1.increment(5)
 
@@ -123,7 +123,7 @@ class TestSerialized:
         for thread in threads:
             thread.join()
 
-        # All calls should be serialized
+        # All calls should be synchronized
         assert len(call_order) == 6
 
         # Check that we have proper start-end pairs
@@ -135,7 +135,7 @@ class TestSerialized:
         """Test that locks are properly released when function raises."""
         call_count = 0
 
-        @serialized
+        @synchronized
         def failing_function() -> str:
             nonlocal call_count
             call_count += 1
@@ -154,7 +154,7 @@ class TestSerialized:
     def test_return_values(self) -> None:
         """Test that function return values work correctly."""
 
-        @serialized
+        @synchronized
         def calculate(x: int, y: int) -> int:
             time.sleep(0.01)  # Small delay to ensure serialization
             return x + y
@@ -182,20 +182,20 @@ class TestSerialized:
 
 
 class TestSerializedByArg:
-    """Tests for the serialized_by_arg decorator."""
+    """Tests for the synchronized_by_arg decorator."""
 
     def test_basic_locking_by_index(self) -> None:
-        """Test that function calls with same argument value are serialized."""
+        """Test that function calls with same argument value are synchronized."""
         call_order: list[str] = []
 
-        @serialized_by_arg(index=0)
+        @synchronized_by_arg(index=0)
         def slow_process(key: str) -> str:
             call_order.append(f"start_{key}")
             time.sleep(0.1)  # Simulate work
             call_order.append(f"end_{key}")
             return f"result_{key}"
 
-        # Start two threads with same key - should be serialized
+        # Start two threads with same key - should be synchronized
         def worker1() -> None:
             slow_process("same_key")
 
@@ -210,7 +210,7 @@ class TestSerializedByArg:
         thread1.join()
         thread2.join()
 
-        # Calls should be fully serialized - one complete before other starts
+        # Calls should be fully synchronized - one complete before other starts
         assert len(call_order) == 4
         assert call_order[0] == "start_same_key"
         assert call_order[1] == "end_same_key"
@@ -222,7 +222,7 @@ class TestSerializedByArg:
         start_times: dict[str, float] = {}
         end_times: dict[str, float] = {}
 
-        @serialized_by_arg(index=0)
+        @synchronized_by_arg(index=0)
         def slow_process(key: str) -> None:
             start_times[key] = time.time()
             time.sleep(0.1)
@@ -246,7 +246,7 @@ class TestSerializedByArg:
         """Test locking by parameter name instead of index."""
         results: list[str] = []
 
-        @serialized_by_arg(key="user_id")
+        @synchronized_by_arg(key="user_id")
         def process_user(user_id: str, _data: dict[str, Any]) -> None:
             results.append(f"processing_{user_id}")
             time.sleep(0.05)
@@ -267,14 +267,14 @@ class TestSerializedByArg:
         thread1.join()
         thread2.join()
 
-        # Should be serialized since same user_id
+        # Should be synchronized since same user_id
         assert results == ["processing_user123", "done_user123", "processing_user123", "done_user123"]
 
     def test_nonblocking_mode(self) -> None:
         """Test nonblocking mode returns None when lock is held."""
         results: list[str | None] = []
 
-        @serialized_by_arg(nonblocking=True)
+        @synchronized_by_arg(nonblocking=True)
         def try_process(key: str) -> str:
             time.sleep(0.1)
             return f"processed_{key}"
@@ -307,12 +307,12 @@ class TestSerializedByArg:
         # Invalid parameter name
         with pytest.raises(ValueError, match="Parameter 'nonexistent' not found"):
 
-            @serialized_by_arg(key="nonexistent")
+            @synchronized_by_arg(key="nonexistent")
             def func(param: str) -> None:
                 pass
 
         # Index out of range
-        @serialized_by_arg(index=2)  # Looking for 3rd argument (index 2)
+        @synchronized_by_arg(index=2)  # Looking for 3rd argument (index 2)
         def needs_two_args(first: str, second: str) -> None:
             pass
 
@@ -323,7 +323,7 @@ class TestSerializedByArg:
         """Test that locks are properly released even when function raises."""
         call_count = 0
 
-        @serialized_by_arg()
+        @synchronized_by_arg()
         def failing_function(_key: str) -> None:
             nonlocal call_count
             call_count += 1
@@ -340,7 +340,7 @@ class TestSerializedByArg:
     def test_mixed_argument_styles(self) -> None:
         """Test function works with both positional and keyword arguments."""
 
-        @serialized_by_arg(key="user_id")
+        @synchronized_by_arg(key="user_id")
         def update_user(user_id: str, name: str, age: int) -> str:
             return f"{user_id}_{name}_{age}"
 
@@ -354,14 +354,14 @@ class TestSerializedByArg:
         assert result3 == "789_Charlie_35"
 
     def test_class_methods(self) -> None:
-        """Test that serialized_by_arg works correctly on class methods."""
+        """Test that synchronized_by_arg works correctly on class methods."""
         call_order: list[str] = []
 
         class UserProcessor:
             def __init__(self, name: str) -> None:
                 self.name = name
 
-            @serialized_by_arg(key="user_id")
+            @synchronized_by_arg(key="user_id")
             def process_user(self, user_id: str, action: str) -> str:
                 call_order.append(f"{self.name}_start_{user_id}_{action}")
                 time.sleep(0.05)
@@ -372,7 +372,7 @@ class TestSerializedByArg:
         processor1 = UserProcessor("P1")
         processor2 = UserProcessor("P2")
 
-        # Test that same user_id is serialized across different instances
+        # Test that same user_id is synchronized across different instances
         def worker1() -> None:
             processor1.process_user("user123", "update")
 
@@ -389,14 +389,14 @@ class TestSerializedByArg:
         for thread in threads:
             thread.join()
 
-        # Calls with same user_id (user123) should be serialized
+        # Calls with same user_id (user123) should be synchronized
         # Call with different user_id (user456) can run in parallel
         assert len(call_order) == 6
 
         # Find positions of user123 calls
         user123_calls = [i for i, call in enumerate(call_order) if "user123" in call]
 
-        # user123 calls should be consecutive (serialized)
+        # user123 calls should be consecutive (synchronized)
         # We should see either P1_start -> P1_end -> P2_start -> P2_end
         # or P2_start -> P2_end -> P1_start -> P1_end
         user123_subsequence = [call_order[i] for i in user123_calls]

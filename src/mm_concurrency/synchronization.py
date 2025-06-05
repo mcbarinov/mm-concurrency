@@ -1,8 +1,8 @@
-"""Thread synchronization decorators for serializing function calls.
+"""Thread synchronization decorators for synchronizing function calls.
 
 Provides two decorators:
-- serialized: All calls to the function are serialized
-- serialized_by_arg: Calls are serialized only for matching argument values
+- synchronized: All calls to the function are synchronized
+- synchronized_by_arg: Calls are synchronized only for matching argument values
 """
 
 import functools
@@ -12,13 +12,13 @@ from collections.abc import Callable
 from threading import Lock, RLock
 
 
-def serialized_by_arg[T, **P](
+def synchronized_by_arg[T, **P](
     index: int = 0, key: str | None = None, nonblocking: bool = False
 ) -> Callable[[Callable[P, T]], Callable[P, T | None]]:
-    """Decorator that serializes function calls based on argument values.
+    """Decorator that synchronizes function calls based on argument values.
 
     Each unique value of the specified argument gets its own lock, allowing
-    concurrent execution for different argument values while serializing
+    concurrent execution for different argument values while synchronizing
     calls with the same argument value.
 
     Args:
@@ -33,18 +33,18 @@ def serialized_by_arg[T, **P](
         ValueError: If key is specified but not found in function signature
 
     Example:
-        @serialized_by_arg(index=0)
+        @synchronized_by_arg(index=0)
         def process_user(user_id: str) -> None:
             # Only one thread can process the same user_id at a time
             # But different user_ids can be processed concurrently
             pass
 
-        @serialized_by_arg(key='user_id')
+        @synchronized_by_arg(key='user_id')
         def process_user(user_id: str, data: dict) -> None:
-            # More readable - serializes by user_id parameter
+            # More readable - synchronizes by user_id parameter
             pass
 
-        @serialized_by_arg(nonblocking=True)
+        @synchronized_by_arg(nonblocking=True)
         def try_update_cache(cache_key: str) -> bool:
             # Returns None if another thread is already updating this key
             pass
@@ -124,27 +124,27 @@ def serialized_by_arg[T, **P](
     return decorator
 
 
-def serialized[T, **P](func: Callable[P, T]) -> Callable[P, T]:
-    """Decorator that ensures all calls to a function are executed serially.
+def synchronized[T, **P](func: Callable[P, T]) -> Callable[P, T]:
+    """Decorator that ensures all calls to a function are executed in synchronized manner.
 
     Creates a single lock for the function, guaranteeing that only one thread
     can execute the function at any time, regardless of arguments.
 
     Args:
-        func: Function to serialize
+        func: Function to synchronize
 
     Returns:
-        Serialized version of the function with the same signature
+        Synchronized version of the function with the same signature
 
     Example:
-        @serialized
+        @synchronized
         def update_global_state() -> None:
             # Only one thread can execute this at a time
             global_counter += 1
 
-        @serialized
+        @synchronized
         def critical_section(data: dict) -> str:
-            # All calls serialized, even with different arguments
+            # All calls synchronized, even with different arguments
             return process_shared_resource(data)
     """
     lock = Lock()

@@ -3,9 +3,7 @@ name = "mm-concurrency"
 version = "0.1.0"
 description = ""
 requires-python = ">=3.13"
-dependencies = [
-    "anyio>=4.9.0",
-]
+dependencies = []
 
 [build-system]
 requires = ["hatchling"]

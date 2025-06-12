@@ -11,13 +11,11 @@ import inspect
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 
-import anyio
-
 
 def async_synchronized[T, **P](func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     """Decorator that ensures all calls to an async function are executed in synchronized manner.
 
-    Creates a single anyio.Lock for the function, guaranteeing that only one
+    Creates a single asyncio.Lock for the function, guaranteeing that only one
     coroutine can execute the function at any time, regardless of arguments.
     Other coroutines will wait for their turn.
 
@@ -38,7 +36,7 @@ def async_synchronized[T, **P](func: Callable[P, Awaitable[T]]) -> Callable[P, A
             # All calls synchronized, even with different arguments
             return await process_shared_resource(data)
     """
-    lock = anyio.Lock()
+    lock = asyncio.Lock()
 
     @functools.wraps(func)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:

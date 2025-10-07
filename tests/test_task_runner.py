@@ -1,6 +1,7 @@
 """Tests for TaskRunner class."""
 
 import logging
+import threading
 import time
 from typing import Any
 
@@ -277,8 +278,6 @@ class TestTaskRunner:
         executed_thread_names = []
 
         def capture_thread_name() -> str:
-            import threading
-
             executed_thread_names.append(threading.current_thread().name)
             return "done"
 

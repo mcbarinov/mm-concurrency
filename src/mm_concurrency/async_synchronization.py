@@ -9,10 +9,11 @@ import asyncio
 import functools
 import inspect
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any
 
 
-def async_synchronized[T, **P](func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
+def async_synchronized[T, **P](func: Callable[P, Awaitable[T]]) -> Callable[P, Coroutine[Any, Any, T]]:
     """Decorator that ensures all calls to an async function are executed in synchronized manner.
 
     Creates a single asyncio.Lock for the function, guaranteeing that only one
@@ -48,7 +49,7 @@ def async_synchronized[T, **P](func: Callable[P, Awaitable[T]]) -> Callable[P, A
 
 def async_synchronized_by_arg_value[T, **P](
     index: int = 0, key: str | None = None, nonblocking: bool = False
-) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T | None]]]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Coroutine[Any, Any, T | None]]]:
     """Decorator that synchronizes async function calls based on argument values.
 
     Each unique value of the specified argument gets its own asyncio.Lock, allowing
@@ -84,7 +85,7 @@ def async_synchronized_by_arg_value[T, **P](
             pass
     """
 
-    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T | None]]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Coroutine[Any, Any, T | None]]:
         # Get function signature for key validation
         sig = inspect.signature(func)
         param_names = list(sig.parameters.keys())
